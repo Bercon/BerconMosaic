@@ -1,3 +1,6 @@
+#!/usr/bin/python
+# -*- coding: iso-8859-15 -*-
+
 import os
 import sys
 from glob import glob
@@ -6,19 +9,23 @@ import time
 import colorsys
 import numpy
 import random
+import json
+import io
 
 RANDOM_SEED = 34632354
-PICTURE_PATH = 'S:/Projects/Mosaic/jerry.jpg'
-TILE_PATH = 'S:/Projects/Mosaic/resized2'
-OUTPUT_PATH = 'S:/Projects/Mosaic/output_%s.png' % time.strftime("%Y-%m-%d-%H-%M-%S")
+PICTURE_PATH = 'S:/Projects/Mosaic/meme_vaiski.jpg'
+TILE_PATH = 'S:/Projects/Mosaic/Valokuvat'
+OUTPUT_PATH = 'S:/Projects/Mosaic/output/output_%s.png' % time.strftime("%Y-%m-%d-%H-%M-%S")
+PALETTE_PATH = 'S:/Projects/Mosaic/palette2.json'
 
-INDEX_SIZE = (3,3)
+INDEX_SIZE = (4,4)
 PICTURE_TILES = (20, 20)
 OUTPUT_SIZE = (1300, 1300)
 
 
 def to_array(tuple):
     return numpy.array(list(tuple))
+
 
 def crop_to_square(img):
     d = min(img.size)
@@ -64,8 +71,8 @@ def get_pixels(img):
     for x in range(size[0]):
         for y in range(size[1]):
             color = img.getpixel((x, y))
-            pixels.append(to_array(color))
-            pixels_hsv.append(to_array(hsv(color)))
+            pixels.append(list(color))
+            pixels_hsv.append(list(hsv(color)))
     return {'rgb': pixels, 'hsv': pixels_hsv}
 
 
@@ -100,23 +107,29 @@ def index_picture(filename):
             for x_off in range(INDEX_SIZE[0]):
                 for y_off in range(INDEX_SIZE[1]):
                     color = img.getpixel((x_base + x_off, y_base + y_off))
-                    tile.append(to_array(color))
-                    tile_hsv.append(to_array(hsv(color)))
+                    tile.append(list(color))
+                    tile_hsv.append(list(hsv(color)))
             tiles.append({
                 'index': index,
                 'rgb': tile,
                 'hsv': tile_hsv
             })
-            print tile_hsv
             index += 1
     return tiles
 
 
-def index_folder(filename):
+def update_palette(filename, palette):
+    existing_palette = {}
+    for tile in palette:
+        existing_palette[tile['filename']] = True
     files = [y for x in os.walk(filename) for y in glob(os.path.join(x[0], '*.jpg'))]
-    images = map(index_image, files)
-    return images
-
+    i = 0
+    for filename in files:
+        sys.stdout.write('\rUpdating palette %d' % (100.0 * i / len(files)))
+        if filename not in existing_palette:
+            palette.append(index_image(filename))
+        i += 1
+    print
 
 # 0 = indentical, >0 = different
 def compare_color(a, b):
@@ -133,7 +146,7 @@ def compare_rgb(tile_a, tile_b):
     value = 0
     for i in range(len(a)):
         #value = value + compare_color(a[i], b[i])
-        value += numpy.linalg.norm(a[i] - b[i])
+        value += numpy.linalg.norm(numpy.array(a[i]) - numpy.array(b[i]))
     return value
 
 
@@ -183,12 +196,30 @@ def render_mosaic(picture):
     return img
 
 
+def save_palette(filename, palette):
+    with open(filename, 'w') as data_file:
+        data = json.dumps(palette)
+        data_file.write(data)
+
+
+def load_palette(filename):
+    try:
+        with open(filename, 'r') as data_file:
+            return json.load(data_file)
+    except:
+        return []
+
+
 if __name__ == '__main__':
     random.seed(RANDOM_SEED)
     print 'Indexing picture...'
     picture = index_picture(PICTURE_PATH)
-    print 'Indexing...'
-    palette = index_folder(TILE_PATH)
+    print 'Loading palette...'
+    palette = load_palette(PALETTE_PATH)
+    print 'Updating palette...'
+    update_palette(TILE_PATH, palette)
+    print 'Saving palette for future runs...'
+    save_palette(PALETTE_PATH, palette)
     print 'Finding tiles...'
     random.shuffle(picture)
     find_tiles(palette, picture)
