@@ -11,16 +11,26 @@ import numpy
 import random
 import json
 import io
+import utils
+
+from multiprocessing import Pool
+from multiprocessing.dummy import Pool as ThreadPool
 
 RANDOM_SEED = 34632354
-PICTURE_PATH = 'S:/Projects/Mosaic/meme_vaiski.jpg'
+PICTURE_PATH = 'S:/Projects/Mosaic/input/pluto.png'
 TILE_PATH = 'S:/Projects/Mosaic/Valokuvat'
 OUTPUT_PATH = 'S:/Projects/Mosaic/output/output_%s.png' % time.strftime("%Y-%m-%d-%H-%M-%S")
-PALETTE_PATH = 'S:/Projects/Mosaic/palette2.json'
+PALETTE_PATH = 'S:/Projects/Mosaic/palette4.json'
 
-INDEX_SIZE = (4,4)
-PICTURE_TILES = (20, 20)
-OUTPUT_SIZE = (1300, 1300)
+# INDEX_SIZE = (4,4)
+# PICTURE_TILES = (25, 25)
+# OUTPUT_SIZE = (3000, 3000)
+
+INDEX_SIZE = (4, 4)
+PICTURE_TILES = (24, 26)
+OUTPUT_SIZE = (3600, 3900)
+
+WEIGHTS = numpy.array([1.0, 1.0, 1.0])
 
 
 def to_array(tuple):
@@ -51,10 +61,10 @@ def palette_remove(palette, tile):
 # Distance in Hue coordinates i.e. looping 0..1 normalized to 0..1 range
 def hue_distance(a, b):
     return min((
-        abs(a-b),
-        abs(a-b-1),
-        abs(a-b+1)
-    )) * 2.0;
+        abs(a - b),
+        abs(a - b - 1),
+        abs(a - b + 1)
+    )) * 2.0
 
 
 def hsv(color):
@@ -62,7 +72,7 @@ def hsv(color):
 
 
 def get_pixels(img):
-    img = crop_to_square(img)
+    img = utils.crop_to_square(img)
     img = img.resize(INDEX_SIZE, Image.BICUBIC)
     img = img.convert('RGB')
     size = img.size
@@ -75,6 +85,19 @@ def get_pixels(img):
             pixels_hsv.append(list(hsv(color)))
     return {'rgb': pixels, 'hsv': pixels_hsv}
 
+
+
+# {
+#     'filename': filename,
+#     'size': size,
+#     'rgb': [
+#       {
+#           crop: []
+#           tile: []
+#       }
+#     ],
+#     'hsv': pixels['hsv']
+# }
 
 def index_image(filename):
     try:
@@ -93,7 +116,7 @@ def index_image(filename):
 
 def index_picture(filename):
     img = Image.open(filename, 'r')
-    img = crop_to_square(img)
+    img = utils.crop_to_square(img)
     res = (PICTURE_TILES[0] * INDEX_SIZE[0], PICTURE_TILES[1] * INDEX_SIZE[1])
     img = img.resize(res, Image.BICUBIC)
     tiles = []
@@ -124,12 +147,31 @@ def update_palette(filename, palette):
         existing_palette[tile['filename']] = True
     files = [y for x in os.walk(filename) for y in glob(os.path.join(x[0], '*.jpg'))]
     i = 0
+
     for filename in files:
         sys.stdout.write('\rUpdating palette %d' % (100.0 * i / len(files)))
         if filename not in existing_palette:
             palette.append(index_image(filename))
         i += 1
     print
+
+
+def update_palette_multi(filename, palette):
+    existing_palette = {}
+    for tile in palette:
+        existing_palette[tile['filename']] = True
+    files = [y for x in os.walk(filename) for y in glob(os.path.join(x[0], '*.jpg'))]
+    filtered = []
+    for filename in files:
+        if filename not in existing_palette:
+            filtered.append(filename)
+    pool = ThreadPool()
+    results = pool.map(index_image, filtered)
+    pool.close()
+    pool.join()
+    for new_pixel in results:
+        palette.append(new_pixel)
+
 
 # 0 = indentical, >0 = different
 def compare_color(a, b):
@@ -145,8 +187,9 @@ def compare_rgb(tile_a, tile_b):
     b = tile_b['rgb']
     value = 0
     for i in range(len(a)):
-        #value = value + compare_color(a[i], b[i])
-        value += numpy.linalg.norm(numpy.array(a[i]) - numpy.array(b[i]))
+        # value = value + compare_color(a[i], b[i])
+        value += abs(a[i][0] - b[i][0]) + abs(a[i][1] - b[i][1]) * 1.2 + abs(a[i][2] - b[i][2]) * .8
+        # value += numpy.linalg.norm((numpy.array(a[i]) * WEIGHTS) - (numpy.array(b[i]) * WEIGHTS))
     return value
 
 
@@ -186,13 +229,41 @@ def find_tiles(palette, picture):
 def render_mosaic(picture):
     img = Image.new('RGB', OUTPUT_SIZE)
     tile_size = (OUTPUT_SIZE[0] / PICTURE_TILES[0], OUTPUT_SIZE[1] / PICTURE_TILES[1])
-    for tile in picture:
+    count = len(picture)
+    for index in range(count):
+        # for tile in picture:
+        tile = picture[index]
         i = tile['index']
         x = i % PICTURE_TILES[0]
-        y = i // PICTURE_TILES[0] # // is floor division
+        y = i // PICTURE_TILES[0]  # // is floor division
         tile_img = crop_to_square(Image.open(tile['match']['filename']))
         tile_img = tile_img.resize(tile_size)
         img.paste(tile_img, (x * tile_size[0], y * tile_size[1]))
+        sys.stdout.write('\rRendering %d' % (100.0 * index / count))
+    return img
+
+
+def render_mosaic_worker(index, picture, tile_size, img):
+    tile = picture[index]
+    i = tile['index']
+    x = i % PICTURE_TILES[0]
+    y = i // PICTURE_TILES[0]  # // is floor division
+    tile_img = crop_to_square(Image.open(tile['match']['filename']))
+    tile_img = tile_img.resize(tile_size)
+    img.paste(tile_img, (x * tile_size[0], y * tile_size[1]))
+
+
+def render_mosaic_multi(picture):
+    img = Image.new('RGB', OUTPUT_SIZE)
+    tile_size = (OUTPUT_SIZE[0] / PICTURE_TILES[0], OUTPUT_SIZE[1] / PICTURE_TILES[1])
+    count = len(picture)
+
+    worker = lambda x: render_mosaic_worker(x, picture, tile_size, img)
+    pool = ThreadPool()
+    results = pool.map(worker, range(count))
+    pool.close()
+    pool.join()
+
     return img
 
 
@@ -210,21 +281,43 @@ def load_palette(filename):
         return []
 
 
+# def convert_to_numpy(array):
+#    for tile in array:
+#        for
+#        'rgb': tile,
+#        'hsv': tile_hsv
+
+
 if __name__ == '__main__':
+    start_time = time.time()
     random.seed(RANDOM_SEED)
-    print 'Indexing picture...'
+    print
+    'Indexing picture...'
     picture = index_picture(PICTURE_PATH)
-    print 'Loading palette...'
+    print
+    'Loading palette...'
     palette = load_palette(PALETTE_PATH)
-    print 'Updating palette...'
-    update_palette(TILE_PATH, palette)
-    print 'Saving palette for future runs...'
+    print
+    'Updating palette...'
+    # update_palette(TILE_PATH, palette)
+    update_palette_multi(TILE_PATH, palette)
+    print
+    'Saving palette for future runs...'
     save_palette(PALETTE_PATH, palette)
-    print 'Finding tiles...'
+    print
+    'Finding tiles...'
     random.shuffle(picture)
     find_tiles(palette, picture)
-    print 'Rendering mosaic...'
-    img = render_mosaic(picture)
-    print 'Done!'
-    #img.show()
+    print
+    'Rendering mosaic...'
+    # img = render_mosaic(picture)
+    img = render_mosaic_multi(picture)
+
+    print
+    'Done!'
+    # img.show()
     img.save(OUTPUT_PATH)
+
+    elapsed_time = time.time() - start_time
+    print
+    'Processing took %s' % elapsed_time
