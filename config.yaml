@@ -25,3 +25,6 @@ photoResolutionInPixels: [2000, 2000]
 
 # Reuse tiles multiple times
 reuseTiles: True
+
+# Colorize tiles i.e. convert them to monochrome average of source pixel
+colorizeTiles: True

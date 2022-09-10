@@ -4,7 +4,7 @@
 import os
 import sys
 from glob import glob
-from PIL import Image
+from PIL import Image, ImageOps
 import time
 import colorsys
 import numpy
@@ -24,10 +24,6 @@ args = parser.parse_args()
 config = None
 with open(args.config, "r") as stream:
     config = yaml.safe_load(stream)
-
-
-def to_array(tuple):
-    return numpy.array(list(tuple))
 
 
 def crop_to_square(img):
@@ -146,43 +142,11 @@ def update_palette_multi(filename, palette):
             palette.append(new_pixel)
 
 
-# 0 = indentical, >0 = different
-def compare_color(a, b):
-    value = 0
-    for i in range(3):
-        value = value + abs(a[i] - b[i])
-    return value
-
-
-# 0 = indentical, >0 = different
-def compare_rgb(tile_a, tile_b):
-    a = tile_a['rgb']
-    b = tile_b['rgb']
-    value = 0
-    for i in range(len(a)):
-        # value = value + compare_color(a[i], b[i])
-        value += abs(a[i][0] - b[i][0]) + abs(a[i][1] - b[i][1]) * 1.2 + abs(a[i][2] - b[i][2]) * .8
-        # value += numpy.linalg.norm((numpy.array(a[i]) * WEIGHTS) - (numpy.array(b[i]) * WEIGHTS))
-    return value
-
-
-def compare_hsv(tile_a, tile_b):
-    a = tile_a['hsv']
-    b = tile_b['hsv']
-    value = 0
-    for i in range(len(a)):
-        # Hue, Saturation, Value
-        value = value + hue_distance(a[i][0], b[i][0])
-        value = value + abs(a[i][1] - b[i][1])
-        value = value + abs(a[i][2] - b[i][2]) * 1.0
-    return value
-
-
 def find_closest_match(palette, tile):
     closest_value = None
     closest_tile = None
     for index_tile in palette:
-        value = compare_rgb(index_tile, tile)
+        value = utils.distance_value(index_tile, tile)
         if closest_value is None or value < closest_value:
             closest_value = value
             closest_tile = index_tile
@@ -201,6 +165,7 @@ def find_tiles(palette, picture):
     sys.stdout.write('\rFinding tiles 100%!\n')
 
 
+# Done for each tile, modify colors etc. here
 def render_mosaic_worker(params):
     tile = params["tile"]
     tile_size = params["size"]
@@ -211,6 +176,12 @@ def render_mosaic_worker(params):
     y = i // config["photoResolutionInTiles"][0]  # // is floor division
     tile_img = crop_to_square(Image.open(tile['match']['filename']))
     tile_img = tile_img.resize(tile_size)
+
+    if (config["colorizeTiles"]):
+        avgColor = utils.average_rgb_color(tile)
+        tile_img = ImageOps.grayscale(tile_img)
+        tile_img = ImageOps.colorize(tile_img, [0,0,0], [255,255,255], avgColor) # mid=None, blackpoint=0, whitepoint=255, midpoint=127
+
     return {
         "x": x,
         "y": y,
