@@ -10,13 +10,8 @@ import colorsys
 import numpy
 import random
 import json
-import io
 import utils
 import argparse
-import json
-import os
-import pathlib
-import subprocess
 import yaml
 import multiprocessing
 
@@ -29,20 +24,6 @@ args = parser.parse_args()
 config = None
 with open(args.config, "r") as stream:
     config = yaml.safe_load(stream)
-
-
-# RANDOM_SEED = 34632354
-# PICTURE_PATH = 'S:/Projects/Mosaic/input/pluto.png'
-# TILE_PATH = 'S:/Projects/Mosaic/Valokuvat'
-# OUTPUT_PATH = 'S:/Projects/Mosaic/output/output_%s.png' % time.strftime("%Y-%m-%d-%H-%M-%S")
-# PALETTE_PATH = 'S:/Projects/Mosaic/palette4.json'
-
-# INDEX_SIZE = (4,4)
-# PICTURE_TILES = (25, 25)
-# OUTPUT_SIZE = (3000, 3000)
-
-
-# WEIGHTS = numpy.array([1.0, 1.0, 1.0])
 
 
 def to_array(tuple):
@@ -101,19 +82,6 @@ def get_pixels(img):
     }
 
 
-
-# {
-#     'filename': filename,
-#     'size': size,
-#     'rgb': [
-#       {
-#           crop: []
-#           tile: []
-#       }
-#     ],
-#     'hsv': pixels['hsv']
-# }
-
 def index_image(filename):
     try:
         img = Image.open(filename, 'r')
@@ -156,21 +124,6 @@ def index_photo(filename):
             })
             index += 1
     return tiles
-
-
-# def update_palette(filename, palette):
-#     existing_palette = {}
-#     for tile in palette:
-#         existing_palette[tile['filename']] = True
-#     files = [y for x in os.walk(filename) for y in glob(os.path.join(x[0], '*.jpg'))]
-#     i = 0
-
-#     for filename in files:
-#         sys.stdout.write('\rUpdating palette %d' % (100.0 * i / len(files)))
-#         if filename not in existing_palette:
-#             palette.append(index_image(filename))
-#         i += 1
-#     print
 
 
 def update_palette_multi(filename, palette):
@@ -246,26 +199,6 @@ def find_tiles(palette, picture):
             palette_remove(palette, closest_tile)
         tile['match'] = closest_tile
     sys.stdout.write('\rFinding tiles 100%!\n')
-
-
-# def render_mosaic(picture):
-#     img = Image.new('RGB', config.photoResolutionInPixels)
-#     tile_size = (
-#         config.photoResolutionInPixels[0] / config.photoResolutionInTiles[0],
-#         config.photoResolutionInPixels[1] / config.photoResolutionInTiles[1]
-#     )
-#     count = len(picture)
-#     for index in range(count):
-#         # for tile in picture:
-#         tile = picture[index]
-#         i = tile['index']
-#         x = i % PICTURE_TILES[0]
-#         y = i // PICTURE_TILES[0] # // is floor division
-#         tile_img = crop_to_square(Image.open(tile['match']['filename']))
-#         tile_img = tile_img.resize(tile_size)
-#         img.paste(tile_img, (x * tile_size[0], y * tile_size[1]))
-#         sys.stdout.write('\rRendering %d' % (100.0 * index / count))
-#     return img
 
 
 def render_mosaic_worker(params):
