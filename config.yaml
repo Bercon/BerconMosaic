@@ -1,0 +1,27 @@
+
+# Path to folder containing mosaic images
+tilesFolder: "./data/tiles"
+
+# Path to main image mosaic represents
+photoPath: "./data/photos/ylioppilas.jpg"
+
+# Tile cache file
+tilePalettePath: "./data/palette.json"
+
+# Path to output directory
+outputFolder: "./data/output"
+
+# Random seed for rng
+randomSeed: 34632354
+
+# Resolution of tiles used for matching desired output
+tileIndexSize: [4, 4]
+
+# Dimension of the final photo in tiles
+photoResolutionInTiles: [20, 20]
+
+# Dimension of the final photo in pixels
+photoResolutionInPixels: [2000, 2000]
+
+# Reuse tiles multiple times
+reuseTiles: True

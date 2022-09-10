@@ -1,3 +1,4 @@
+import math
 from PIL import Image
 
 def center(img):
@@ -38,6 +39,7 @@ def crop(img, box, resolution):
     img = img.convert('RGB')
     return img
 
+
 def crops(img, resolution):
     return (
         crop(img, left(img), resolution),
@@ -45,7 +47,15 @@ def crops(img, resolution):
         crop(img, right(img), resolution)
     )
 
-    # Crop center
-    # Crop left/top
-    # Crop right/bottom
+
+def crop_to_square(img):
+    width = img.width
+    height = img.height
+    newSize = min(width, height)
+    xOffset = (width - newSize) // 2
+    yOffset = (height - newSize) // 2
+    return img.crop((
+        xOffset, yOffset,
+        xOffset + newSize, yOffset + newSize
+    ))
 
