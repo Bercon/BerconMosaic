@@ -14,6 +14,7 @@ import utils
 import argparse
 import yaml
 import multiprocessing
+from dataclasses import dataclass
 
 
 parser = argparse.ArgumentParser()
@@ -24,6 +25,27 @@ args = parser.parse_args()
 config = None
 with open(args.config, "r") as stream:
     config = yaml.safe_load(stream)
+
+@dataclass
+class Tile:
+    filename: str
+    size: tuple[int, int]
+    rgb: list
+    hsv: list
+
+@dataclass
+class Palette:
+    index: list
+
+@dataclass
+class PaintingPixel:
+    ranks = []
+    match = None
+
+@dataclass
+class Painting:
+    tiles_unoredered = []
+    tiles = []
 
 
 def crop_to_square(img):
@@ -122,9 +144,9 @@ def index_photo(filename):
     return tiles
 
 
-def update_palette_multi(filename, palette):
+def update_palette_multi(filename: str, palette: Palette):
     existing_palette = {}
-    for tile in palette:
+    for tile in palette.index:
         existing_palette[tile['filename']] = True
     files = [y for x in os.walk(filename) for y in glob(os.path.join(x[0], '*.jpg'))]
     filtered = []
@@ -139,7 +161,7 @@ def update_palette_multi(filename, palette):
         with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
             results = pool.map(index_image, filtered)
         for new_pixel in results:
-            palette.append(new_pixel)
+            palette.index.append(new_pixel)
 
 
 def find_closest_match(palette, tile):
@@ -153,14 +175,37 @@ def find_closest_match(palette, tile):
     return closest_tile
 
 
-def find_tiles(palette, picture):
+# For each pixel, compute rank for each tile i.e. you get array dim: pixel*tiles
+def rank_tiles_for_each_pixel(palette, picture):
+    tiles = []
+    for i in range(len(picture)):
+        tiles.append({
+            "tile": picture[i],
+            "palette": palette
+        })
+
+    def rank_tiles(params):
+        tile = params["tile"]
+        palette = params["palette"]
+        tile["ranks"] = []
+        for index_tile in palette:
+            value = utils.distance_value(index_tile, tile)
+            tile["ranks"].append((value, index_tile))
+        tile["ranks"].sort(key=lambda pair: pair[0])
+
+    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+        pool.map(rank_tiles, tiles)
+
+
+def find_tiles(palette: Palette, picture):
+    # rank_tiles_for_each_pixel(palette, picture)
     for i in range(len(picture)):
         tile = picture[i]
         sys.stdout.write('\rFinding tiles %d%%' % (100.0 * i / len(picture)))
         sys.stdout.flush()
-        closest_tile = find_closest_match(palette, tile)
+        closest_tile = find_closest_match(palette.index, tile)
         if not config["reuseTiles"]:
-            palette_remove(palette, closest_tile)
+            palette_remove(palette.index, closest_tile)
         tile['match'] = closest_tile
     sys.stdout.write('\rFinding tiles 100%!\n')
 
@@ -209,28 +254,43 @@ def render_mosaic_multi(picture):
     return img
 
 
-def save_palette(filename, palette):
+def save_palette(filename: str, palette: Palette):
     with open(filename, 'w') as data_file:
-        data = json.dumps(palette)
+        data = json.dumps(palette.index)
         data_file.write(data)
 
 
-def load_palette(filename):
+def load_palette(filename) -> Palette:
     try:
         with open(filename, 'r') as data_file:
-            return json.load(data_file)
+            return Palette(index=json.load(data_file))
     except:
         return []
+
+
+def processPhoto(photoPath: str, palette: Palette):
+    print("Indexing photo [{}]...".format(photoPath), flush=True)
+    picture = index_photo(photoPath)
+
+    print("Finding tiles...", flush=True)
+    random.shuffle(picture)
+    find_tiles(palette, picture)
+
+    print("Rendering mosaic...", flush=True)
+    # img = render_mosaic(picture)
+    img = render_mosaic_multi(picture)
+
+    print("Done!", flush=True)
+    # img.show()
+    os.makedirs(config["outputFolder"], exist_ok=True)
+    img.save(config["outputFolder"] + "/" + time.strftime("%Y-%m-%d-%H-%M-%S") + ".png")
 
 
 if __name__ == '__main__':
     start_time = time.time()
     random.seed(config["randomSeed"])
 
-    print("Indexing photo...", flush=True)
-    picture = index_photo(config["photoPath"])
-
-    palette = []
+    palette = None
     if args.reset:
         try:
             os.remove(config["tilePalettePath"])
@@ -246,18 +306,11 @@ if __name__ == '__main__':
     print("Saving palette for future runs...", flush=True)
     save_palette(config["tilePalettePath"], palette)
 
-    print("Finding tiles...", flush=True)
-    random.shuffle(picture)
-    find_tiles(palette, picture)
-
-    print("Rendering mosaic...", flush=True)
-    # img = render_mosaic(picture)
-    img = render_mosaic_multi(picture)
-
-    print("Done!", flush=True)
-    # img.show()
-    os.makedirs(config["outputFolder"], exist_ok=True)
-    img.save(config["outputFolder"] + "/" + time.strftime("%Y-%m-%d-%H-%M-%S") + ".png")
+    photoPaths = config["photoPath"]
+    if type(photoPaths) is str:
+        processPhoto(photoPaths, palette)
+    else:
+        for path in photoPaths: processPhoto(path, palette)
 
     elapsed_time = time.time() - start_time
     print("Processing took %s" % elapsed_time)
