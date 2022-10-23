@@ -158,35 +158,40 @@ def find_closest_match(palette: Palette, tile: PaintingTile):
     return closest_tile
 
 
+def rank_tiles(params):
+    tile = params["tile"]
+    palette = params["palette"]
+    ranks = []
+    for i in range(len(palette.index)):
+        index_tile = palette.index[i]
+        value = utils.distance_value(index_tile, tile)
+        ranks.append((value, i))
+    ranks.sort(key=lambda pair: pair[0])
+    return (tile.index, ranks)
+
+
 # For each pixel, compute rank for each tile i.e. you get array dim: pixel*tiles
-# def rank_tiles_for_each_pixel(palette, picture):
-#     tiles = []
-#     for i in range(len(picture)):
-#         tiles.append({
-#             "tile": picture[i],
-#             "palette": palette
-#         })
-
-#     def rank_tiles(params):
-#         tile = params["tile"]
-#         palette = params["palette"]
-#         tile["ranks"] = []
-#         for index_tile in palette:
-#             value = utils.distance_value(index_tile, tile)
-#             tile["ranks"].append((value, index_tile))
-#         tile["ranks"].sort(key=lambda pair: pair[0])
-
-#     with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-#         pool.map(rank_tiles, tiles)
+def rank_tiles_for_each_pixel(palette, picture):
+    tiles = []
+    for i in range(len(picture.tiles_unordered)):
+        tiles.append({
+            "tile": picture.tiles_unordered[i],
+            "palette": palette
+        })
+    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+        results = pool.map(rank_tiles, tiles)
+        for res in results:
+            picture.tiles[res[0]].ranks = res[1]
 
 
 def find_tiles(palette: Palette, picture: Painting):
-    # rank_tiles_for_each_pixel(palette, picture)
+    rank_tiles_for_each_pixel(palette, picture)
     for i in range(len(picture.tiles_unordered)):
         tile = picture.tiles_unordered[i]
         sys.stdout.write('\rFinding tiles %d%%' % (100.0 * i / len(picture.tiles_unordered)))
         sys.stdout.flush()
-        closest_tile = find_closest_match(palette, tile)
+        # closest_tile = find_closest_match(palette, tile)
+        closest_tile = palette.index[tile.ranks[0][1]]
         if not config["reuseTiles"]:
             palette_remove(palette.index, closest_tile)
         tile.match = closest_tile

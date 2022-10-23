@@ -25,3 +25,7 @@ Create mosaic image with:
 ```
 python mosaic.py
 ```
+
+## TODO:
+
+* Multiprocessing might pickle the palette for each tile, refactor it

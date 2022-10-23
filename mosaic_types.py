@@ -19,9 +19,8 @@ class PaintingTile:
     hsv: list
     x: int
     y: int
-    ranks: list[tuple[float, Tile]] = field(default_factory=list)
+    ranks: list[tuple[float, int]] = field(default_factory=list)
     match: Tile = None
-
 
 @dataclass
 class RenderTile:
@@ -29,14 +28,8 @@ class RenderTile:
     y: int
     img: Image = None
 
-
 @dataclass
 class Painting:
     tiles_unoredered: list[PaintingTile] = field(default_factory=list)
     tiles: list[PaintingTile] = field(default_factory=list)
 
-
-
-    # i = tile['index']
-    # x = i % config["photoResolutionInTiles"][0]
-    # y = i // config["photoResolutionInTiles"][0]  # // is floor division
