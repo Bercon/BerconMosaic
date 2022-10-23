@@ -1,5 +1,6 @@
 import math
 from PIL import Image
+from mosaic_types import *
 
 def center(img):
     d = min(img.size)
@@ -94,8 +95,8 @@ def compare_hsv(tile_a, tile_b):
 
 
 def distance_value(tile_a, tile_b):
-    a = tile_a['hsv']
-    b = tile_b['hsv']
+    a = tile_a.hsv
+    b = tile_b.hsv
     value = 0
     for i in range(len(a)):
         # Hue, Saturation, Value
@@ -112,8 +113,8 @@ def compare_color(a, b):
 
 
 # 0 = indentical, >0 = different
-def average_rgb_color(tile):
-    rgbs = tile["rgb"]
+def average_rgb_color(tile: PaintingTile):
+    rgbs = tile.rgb
     total = [0,0,0]
     for rgb in rgbs:
         for i in range(3):

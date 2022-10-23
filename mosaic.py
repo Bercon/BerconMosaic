@@ -14,7 +14,8 @@ import utils
 import argparse
 import yaml
 import multiprocessing
-from dataclasses import dataclass
+from mosaic_types import *
+from dataclasses import asdict
 
 
 parser = argparse.ArgumentParser()
@@ -25,27 +26,6 @@ args = parser.parse_args()
 config = None
 with open(args.config, "r") as stream:
     config = yaml.safe_load(stream)
-
-@dataclass
-class Tile:
-    filename: str
-    size: tuple[int, int]
-    rgb: list
-    hsv: list
-
-@dataclass
-class Palette:
-    index: list
-
-@dataclass
-class PaintingPixel:
-    ranks = []
-    match = None
-
-@dataclass
-class Painting:
-    tiles_unoredered = []
-    tiles = []
 
 
 def crop_to_square(img):
@@ -62,7 +42,7 @@ def crop_to_square(img):
     return img.crop(box)
 
 
-def palette_remove(palette, tile):
+def palette_remove(palette: Palette, tile: Tile):
     for i in range(len(palette)):
         if (palette[i]['filename'] == tile['filename']):
             del palette[i]
@@ -82,7 +62,7 @@ def hsv(color):
     return colorsys.rgb_to_hsv(color[0] / 255., color[1] / 255., color[2] / 255.)
 
 
-def get_pixels(img):
+def get_pixels(img: Image):
     img = utils.crop_to_square(img)
     img = img.resize(config["tileIndexSize"], Image.Resampling.BICUBIC)
     img = img.convert('RGB')
@@ -100,29 +80,30 @@ def get_pixels(img):
     }
 
 
-def index_image(filename):
+def index_image(filename: str) -> Tile:
     try:
         img = Image.open(filename, 'r')
         size = img.size
         pixels = get_pixels(img)
-        return {
-            'filename': filename,
-            'size': size,
-            'rgb': pixels['rgb'],
-            'hsv': pixels['hsv']
-        }
+        return Tile(
+            filename = filename,
+            size = size,
+            rgb = pixels['rgb'],
+            hsv = pixels['hsv']
+        )
     except:
         print('Couldn\'t index %s' % filename)
+        return None
 
 
-def index_photo(filename):
+def index_photo(filename: str) -> Painting:
     img = Image.open(filename, 'r')
     img = utils.crop_to_square(img)
     tileCount = config["photoResolutionInTiles"]
     tileSize = config["tileIndexSize"]
     res = (tileCount[0] * tileSize[0], tileCount[1] * tileSize[1])
     img = img.resize(res, Image.Resampling.BICUBIC)
-    tiles = []
+    painting = Painting()
     index = 0
     for j in range(tileCount[1]):
         for i in range(tileCount[0]):
@@ -135,19 +116,21 @@ def index_photo(filename):
                     color = img.getpixel((x_base + x_off, y_base + y_off))
                     tile.append(list(color))
                     tile_hsv.append(list(hsv(color)))
-            tiles.append({
-                'index': index,
-                'rgb': tile,
-                'hsv': tile_hsv
-            })
+            painting.tiles.append(PaintingTile(
+                index = index,
+                rgb = tile,
+                hsv = tile_hsv,
+                x = i,
+                y = j
+            ))
             index += 1
-    return tiles
+    return painting
 
 
 def update_palette_multi(filename: str, palette: Palette):
     existing_palette = {}
     for tile in palette.index:
-        existing_palette[tile['filename']] = True
+        existing_palette[tile.filename] = True
     files = [y for x in os.walk(filename) for y in glob(os.path.join(x[0], '*.jpg'))]
     filtered = []
     for filename in files:
@@ -164,10 +147,10 @@ def update_palette_multi(filename: str, palette: Palette):
             palette.index.append(new_pixel)
 
 
-def find_closest_match(palette, tile):
+def find_closest_match(palette: Palette, tile: PaintingTile):
     closest_value = None
     closest_tile = None
-    for index_tile in palette:
+    for index_tile in palette.index:
         value = utils.distance_value(index_tile, tile)
         if closest_value is None or value < closest_value:
             closest_value = value
@@ -176,96 +159,102 @@ def find_closest_match(palette, tile):
 
 
 # For each pixel, compute rank for each tile i.e. you get array dim: pixel*tiles
-def rank_tiles_for_each_pixel(palette, picture):
-    tiles = []
-    for i in range(len(picture)):
-        tiles.append({
-            "tile": picture[i],
-            "palette": palette
-        })
+# def rank_tiles_for_each_pixel(palette, picture):
+#     tiles = []
+#     for i in range(len(picture)):
+#         tiles.append({
+#             "tile": picture[i],
+#             "palette": palette
+#         })
 
-    def rank_tiles(params):
-        tile = params["tile"]
-        palette = params["palette"]
-        tile["ranks"] = []
-        for index_tile in palette:
-            value = utils.distance_value(index_tile, tile)
-            tile["ranks"].append((value, index_tile))
-        tile["ranks"].sort(key=lambda pair: pair[0])
+#     def rank_tiles(params):
+#         tile = params["tile"]
+#         palette = params["palette"]
+#         tile["ranks"] = []
+#         for index_tile in palette:
+#             value = utils.distance_value(index_tile, tile)
+#             tile["ranks"].append((value, index_tile))
+#         tile["ranks"].sort(key=lambda pair: pair[0])
 
-    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-        pool.map(rank_tiles, tiles)
+#     with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+#         pool.map(rank_tiles, tiles)
 
 
-def find_tiles(palette: Palette, picture):
+def find_tiles(palette: Palette, picture: Painting):
     # rank_tiles_for_each_pixel(palette, picture)
-    for i in range(len(picture)):
-        tile = picture[i]
-        sys.stdout.write('\rFinding tiles %d%%' % (100.0 * i / len(picture)))
+    for i in range(len(picture.tiles_unordered)):
+        tile = picture.tiles_unordered[i]
+        sys.stdout.write('\rFinding tiles %d%%' % (100.0 * i / len(picture.tiles_unordered)))
         sys.stdout.flush()
-        closest_tile = find_closest_match(palette.index, tile)
+        closest_tile = find_closest_match(palette, tile)
         if not config["reuseTiles"]:
             palette_remove(palette.index, closest_tile)
-        tile['match'] = closest_tile
+        tile.match = closest_tile
     sys.stdout.write('\rFinding tiles 100%!\n')
 
 
 # Done for each tile, modify colors etc. here
-def render_mosaic_worker(params):
+def render_mosaic_worker(params) -> RenderTile:
     tile = params["tile"]
     tile_size = params["size"]
     # print("Index", index, "length", len(picture))
     # tile = picture[index]
-    i = tile['index']
-    x = i % config["photoResolutionInTiles"][0]
-    y = i // config["photoResolutionInTiles"][0]  # // is floor division
-    tile_img = crop_to_square(Image.open(tile['match']['filename']))
+    tile_img = crop_to_square(Image.open(tile.match.filename))
     tile_img = tile_img.resize(tile_size)
 
     if (config["colorizeTiles"]):
         avgColor = utils.average_rgb_color(tile)
         tile_img = ImageOps.grayscale(tile_img)
         tile_img = ImageOps.colorize(tile_img, [0,0,0], [255,255,255], avgColor) # mid=None, blackpoint=0, whitepoint=255, midpoint=127
+    return RenderTile(
+        x = tile.x,
+        y = tile.y,
+        img = tile_img
+    )
 
-    return {
-        "x": x,
-        "y": y,
-        "img": tile_img
-    }
 
-
-def render_mosaic_multi(picture):
+def render_mosaic_multi(picture: Painting):
     tile_size = (
         config["photoResolutionInPixels"][0] // config["photoResolutionInTiles"][0],
         config["photoResolutionInPixels"][1] // config["photoResolutionInTiles"][1]
     )
-    count = len(picture)
     tiles = []
-    for i in range(count):
+    for i in range(len(picture.tiles_unordered)):
         tiles.append({
-            "tile": picture[i],
+            "tile": picture.tiles_unordered[i],
             "size": tile_size
         })
+    renderTiles = None
     with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-        results = pool.map(render_mosaic_worker, tiles)
+        renderTiles = pool.map(render_mosaic_worker, tiles)
     img = Image.new('RGB', config["photoResolutionInPixels"])
-    for tile in results:
-        img.paste(tile["img"], (tile["x"] * tile_size[0], tile["y"] * tile_size[1]))
+    for tile in renderTiles:
+        print("pasting", tile.x, tile.y, tile.img)
+        img.paste(tile.img, (tile.x * tile_size[0], tile.y * tile_size[1]))
     return img
 
 
 def save_palette(filename: str, palette: Palette):
     with open(filename, 'w') as data_file:
-        data = json.dumps(palette.index)
+        dicts = list(map(lambda tile: asdict(tile), palette.index))
+        data = json.dumps(dicts)
         data_file.write(data)
 
 
-def load_palette(filename) -> Palette:
+def load_palette(filename, palette) -> Palette:
     try:
         with open(filename, 'r') as data_file:
-            return Palette(index=json.load(data_file))
+            index = json.load(data_file)
+            for tile in index:
+                palette.index.append(Tile(
+                    filename = tile["filename"],
+                    size = tile["size"],
+                    rgb = tile['rgb'],
+                    hsv = tile['hsv']
+                ))
+            return palette
     except:
-        return []
+        pass
 
 
 def processPhoto(photoPath: str, palette: Palette):
@@ -273,7 +262,8 @@ def processPhoto(photoPath: str, palette: Palette):
     picture = index_photo(photoPath)
 
     print("Finding tiles...", flush=True)
-    random.shuffle(picture)
+    # random.shuffle(picture)
+    picture.tiles_unordered = random.sample(picture.tiles, len(picture.tiles))
     find_tiles(palette, picture)
 
     print("Rendering mosaic...", flush=True)
@@ -290,7 +280,7 @@ if __name__ == '__main__':
     start_time = time.time()
     random.seed(config["randomSeed"])
 
-    palette = None
+    palette = Palette([])
     if args.reset:
         try:
             os.remove(config["tilePalettePath"])
@@ -298,7 +288,7 @@ if __name__ == '__main__':
             pass
     else:
         print("Loading palette...", flush=True)
-        palette = load_palette(config["tilePalettePath"])
+        load_palette(config["tilePalettePath"], palette)
 
     print("Updating palette...", flush=True)
     update_palette_multi(config["tilesFolder"], palette)
