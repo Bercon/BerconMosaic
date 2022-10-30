@@ -89,7 +89,8 @@ def index_image(filename: str) -> Tile:
             filename = filename,
             size = size,
             rgb = pixels['rgb'],
-            hsv = pixels['hsv']
+            hsv = pixels['hsv'],
+            index = -1
         )
     except:
         print('Couldn\'t index %s' % filename)
@@ -103,7 +104,7 @@ def index_photo(filename: str) -> Painting:
     tileSize = config["tileIndexSize"]
     res = (tileCount[0] * tileSize[0], tileCount[1] * tileSize[1])
     img = img.resize(res, Image.Resampling.BICUBIC)
-    painting = Painting()
+    painting = Painting(config["photoResolutionInTiles"][0], config["photoResolutionInTiles"][1])
     index = 0
     for j in range(tileCount[1]):
         for i in range(tileCount[0]):
@@ -144,6 +145,7 @@ def update_palette_multi(filename: str, palette: Palette):
         with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
             results = pool.map(index_image, filtered)
         for new_pixel in results:
+            new_pixel.index = len(palette.index)
             palette.index.append(new_pixel)
 
 
@@ -186,14 +188,26 @@ def rank_tiles_for_each_pixel(palette, picture):
 
 def find_tiles(palette: Palette, picture: Painting):
     rank_tiles_for_each_pixel(palette, picture)
+
+
     for i in range(len(picture.tiles_unordered)):
         tile = picture.tiles_unordered[i]
         sys.stdout.write('\rFinding tiles %d%%' % (100.0 * i / len(picture.tiles_unordered)))
         sys.stdout.flush()
-        # closest_tile = find_closest_match(palette, tile)
-        closest_tile = palette.index[tile.ranks[0][1]]
-        if not config["reuseTiles"]:
-            palette_remove(palette.index, closest_tile)
+        SEARCH_RADIUS = 5
+        neighbours = picture.getNeighbouringTiles(i, SEARCH_RADIUS)
+        # print(neighbours)
+        if (len(neighbours) >= len(palette.index)):
+            raise Exception("Neibhbourhood size is bigger than palette size, can't find acceptable tiles")
+        j = 0
+        matchingTile = tile.ranks[j][1]
+        while matchingTile in neighbours:
+            j += 1
+            matchingTile = tile.ranks[j][1]
+        # print(matchingTile)
+        closest_tile = palette.index[matchingTile]
+        # if not config["reuseTiles"]:
+        #     palette_remove(palette.index, closest_tile)
         tile.match = closest_tile
     sys.stdout.write('\rFinding tiles 100%!\n')
 
@@ -234,7 +248,7 @@ def render_mosaic_multi(picture: Painting):
         renderTiles = pool.map(render_mosaic_worker, tiles)
     img = Image.new('RGB', config["photoResolutionInPixels"])
     for tile in renderTiles:
-        print("pasting", tile.x, tile.y, tile.img)
+        # print("pasting", tile.x, tile.y, tile.img)
         img.paste(tile.img, (tile.x * tile_size[0], tile.y * tile_size[1]))
     return img
 
@@ -255,7 +269,8 @@ def load_palette(filename, palette) -> Palette:
                     filename = tile["filename"],
                     size = tile["size"],
                     rgb = tile['rgb'],
-                    hsv = tile['hsv']
+                    hsv = tile['hsv'],
+                    index = len(palette.index)
                 ))
             return palette
     except:
