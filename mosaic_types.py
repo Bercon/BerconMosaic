@@ -45,7 +45,6 @@ class Painting:
         curY = math.floor(tileIndex / self.widthInTiles)
         for x in range(-radiusCeiled, radiusCeiled):
             for y in range(-radiusCeiled, radiusCeiled):
-                print(x)
                 px = curX + x
                 py = curY + y
                 if px < 0 or py < 0 or px >= self.widthInTiles or py >= self.heightInTiles:

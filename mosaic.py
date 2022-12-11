@@ -4,7 +4,7 @@
 import os
 import sys
 from glob import glob
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageDraw, ImageFont
 import time
 import colorsys
 import numpy
@@ -188,14 +188,12 @@ def rank_tiles_for_each_pixel(palette, picture):
 
 def find_tiles(palette: Palette, picture: Painting):
     rank_tiles_for_each_pixel(palette, picture)
-
-
     for i in range(len(picture.tiles_unordered)):
         tile = picture.tiles_unordered[i]
         sys.stdout.write('\rFinding tiles %d%%' % (100.0 * i / len(picture.tiles_unordered)))
         sys.stdout.flush()
         SEARCH_RADIUS = 5
-        neighbours = picture.getNeighbouringTiles(i, SEARCH_RADIUS)
+        neighbours = picture.getNeighbouringTiles(tile.index, SEARCH_RADIUS)
         # print(neighbours)
         if (len(neighbours) >= len(palette.index)):
             raise Exception("Neibhbourhood size is bigger than palette size, can't find acceptable tiles")
@@ -204,7 +202,7 @@ def find_tiles(palette: Palette, picture: Painting):
         while matchingTile in neighbours:
             j += 1
             matchingTile = tile.ranks[j][1]
-        # print(matchingTile)
+        # print(matchingTile, matchingTile in neighbours, neighbours)
         closest_tile = palette.index[matchingTile]
         # if not config["reuseTiles"]:
         #     palette_remove(palette.index, closest_tile)
@@ -224,7 +222,13 @@ def render_mosaic_worker(params) -> RenderTile:
     if (config["colorizeTiles"]):
         avgColor = utils.average_rgb_color(tile)
         tile_img = ImageOps.grayscale(tile_img)
-        tile_img = ImageOps.colorize(tile_img, [0,0,0], [255,255,255], avgColor) # mid=None, blackpoint=0, whitepoint=255, midpoint=127
+        tile_img = ImageOps.colorize(tile_img, avgColor, [255,255,255]) # mid=None, blackpoint=0, whitepoint=255, midpoint=127
+
+    DRAW_ID = False
+    if DRAW_ID:
+        draw = ImageDraw.Draw(tile_img)
+        draw.text((25, 25), text=str(tile.match.index), fill="red")
+
     return RenderTile(
         x = tile.x,
         y = tile.y,

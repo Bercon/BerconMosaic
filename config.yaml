@@ -2,8 +2,21 @@
 # Path to folder containing mosaic images
 tilesFolder: "./data/tiles"
 
-# Path to main image mosaic represents
-photoPath: "./data/photos/ylioppilas.jpg"
+# Path to main image mosaic represents (or on array of paths)
+photoPath: [
+  # "./data/photos/poika_varis.png",
+  # "./data/photos/poika_varis_varjatty.png",
+  # "./data/photos/roope_karhukopla.jpg",
+  # "./data/photos/roope_uinti.jpg",
+  # "./data/photos/aku.png",
+  # "./data/photos/taistelevat_metsot.png",
+  # "./data/photos/taistelevat_metsot_varjatty.png",
+  # "./data/photos/ylioppilas.jpg"
+  # "./data/photos/roni.png"
+  "./data/photos/roni_modified.png"
+  # "./data/photos/c8f236d5-954b-4f9d-80c4-c0e5add95602.JPG"
+  # "./data/photos/sade.png"
+]
 
 # Tile cache file
 tilePalettePath: "./data/palette.json"
@@ -18,10 +31,10 @@ randomSeed: 34632354
 tileIndexSize: [4, 4]
 
 # Dimension of the final photo in tiles
-photoResolutionInTiles: [20, 20]
+photoResolutionInTiles: [30, 30]
 
 # Dimension of the final photo in pixels
-photoResolutionInPixels: [2000, 2000]
+photoResolutionInPixels: [3000, 3000]
 
 # Reuse tiles multiple times
 reuseTiles: True
